@@ -9,7 +9,7 @@ https://github.com/thedolphin/grub2-lvm-whole-disk/tree/master/grub-install.
 &ensp;&ensp;&ensp;Все действия проводились с использованием Vagrant 2.4.0, VirtualBox 7.0.14 и образа<br/> 
 &ensp;&ensp;CentOS 8 версии 20201204.2
 ### Ход решения ###
-&ensp;&ensp;Для выполнения задания с репозитария https://github.com/thedolphin/grub2-lvm-whole-disk/tree/master/grub-install<br/>
+&ensp;&ensp;Для выполнения задания, с репозитария https://github.com/thedolphin/grub2-lvm-whole-disk/tree/master/grub-install<br/>
 загружался пропатченный установщик GRUB grub2-install.el8, позволяющий устанавливать GRUB в специально подготовленную<br/>
 область на физическом разделе (PV). Далее на отдельном диске /dev/sdb разворачивалcя LVM, затем на него осуществлялся<br/> 
 перенос текущей системы,выполнялись действия по подготовке к загрузке с LVM, в частности формировался новый образ<br/>
