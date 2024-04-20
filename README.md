@@ -238,7 +238,7 @@ sda                 8:0    0  10G  0 disk
 sdb                 8:16   0  10G  0 disk 
 └─vg_root-lv_root 253:0    0  10G  0 lvm  /
 ```
-12. Создание LMV на диске /dev/sda:<br/>
+12. Создание LMV с областью для загрузчика на диске /dev/sda:<br/>
 ```shell
 [root@lvm ~]# pvcreate --bootloaderareasize 1m /dev/sda
 WARNING: dos signature detected on /dev/sda at offset 510. Wipe it? [y/n]: y
@@ -256,4 +256,104 @@ WARNING: dos signature detected on /dev/sda at offset 510. Wipe it? [y/n]: y
   lv_root vg_root -wi-ao---- <10.00g                                                    
   lvr     vgr     -wi-a----- <10.00g                          
 ```
-13. 
+13. Размещение файловой системы XFS на LVM /dev/vgr/lvr:<br/>
+```shell
+[root@lvm ~]# mkfs.xfs /dev/vgr/lvr
+meta-data=/dev/vgr/lvr           isize=512    agcount=4, agsize=655104 blks
+         =                       sectsz=512   attr=2, projid32bit=1
+         =                       crc=1        finobt=1, sparse=1, rmapbt=0
+         =                       reflink=1
+data     =                       bsize=4096   blocks=2620416, imaxpct=25
+         =                       sunit=0      swidth=0 blks
+naming   =version 2              bsize=4096   ascii-ci=0, ftype=1
+log      =internal log           bsize=4096   blocks=2560, version=2
+         =                       sectsz=512   sunit=0 blks, lazy-count=1
+realtime =none                   extsz=4096   blocks=0, rtextents=0
+
+[root@lvm ~]# parted /dev/vgr/lvr print
+Model: Linux device-mapper (linear) (dm)
+Disk /dev/dm-1: 10.7GB
+Sector size (logical/physical): 512B/512B
+Partition Table: loop
+Disk Flags: 
+
+Number  Start  End     Size    File system  Flags
+ 1      0.00B  10.7GB  10.7GB  xfs
+```
+14. Монтирование LVM /dev/vgr/lvr и возвращение на него исходной системы :<br/>
+```shell
+[root@lvm ~]# mount /dev/vgr/lvr /mnt
+
+[root@lvm ~]# xfsdump -J - /dev/vg_root/lv_root | xfsrestore -J - /mnt  
+...
+xfsrestore: Restore Status: SUCCESS
+```
+15. Создание окружения для перехода в возвращённую систему:<br/>
+```shell
+[root@lvm ~]# mount --bind /proc /mnt/proc
+[root@lvm ~]# mount --bind /sys /mnt/sys
+[root@lvm ~]# mount --bind /run /mnt/run
+[root@lvm ~]# mount --bind /dev /mnt/dev
+[root@lvm ~]# chroot /mnt
+```
+16. Подготовка образа initramfs, конфигурирование GRUB и установка загрузчика на LVM /dev/vgr/lvr:<br/>
+```shell
+[root@lvm /]# cd /boot
+[root@lvm boot]# ll
+total 74196
+-rw-r--r--. 1 root root   189500 Nov 19  2020 config-4.18.0-240.1.1.el8_3.x86_64
+drwxr-xr-x. 3 root root       17 Dec  4  2020 efi
+drwx------. 4 root root      103 Apr 20 09:30 grub2
+-rw-------. 1 root root 31235234 Apr 20 09:21 initramfs-4.18.0-240.1.1.el8_3.x86_64.img
+-rw-------. 1 root root 30995238 Dec  4  2020 initramfs-4.18.0-240.1.1.el8_3.x86_64.img.old
+drwxr-xr-x. 3 root root       21 Dec  4  2020 loader
+-rw-------. 1 root root  4032815 Nov 19  2020 System.map-4.18.0-240.1.1.el8_3.x86_64
+-rwxr-xr-x. 1 root root  9514120 Nov 19  2020 vmlinuz-4.18.0-240.1.1.el8_3.x86_64
+
+[root@lvm boot]# rm -f initramfs-4.18.0-240.1.1.el8_3.x86_64.img
+
+[root@lvm boot]# rm -f initramfs-4.18.0-240.1.1.el8_3.x86_64.img.old 
+
+[root@lvm boot]# dracut initramfs-`uname -r`.img
+
+[root@lvm boot]# cd grub2/
+
+[root@lvm grub2]# ll
+total 36
+-rw-r--r--. 1 root root   64 Dec  4  2020 device.map
+drwxr-xr-x. 2 root root   25 Dec  4  2020 fonts
+-rw-r--r--. 1 root root 6721 Apr 20 09:22 grub.cfg
+-rw-r--r--. 1 root root 6457 Dec  4  2020 grub.cfg.old
+-rw-------. 1 root root 1024 Apr 20 09:30 grubenv
+drwxr-xr-x. 2 root root 8192 Apr 20 09:27 i386-pc
+
+[root@lvm grub2]# rm -f grub.*
+
+[root@lvm grub2]# ll
+total 20
+-rw-r--r--. 1 root root   64 Dec  4  2020 device.map
+drwxr-xr-x. 2 root root   25 Dec  4  2020 fonts
+-rw-------. 1 root root 1024 Apr 20 09:30 grubenv
+drwxr-xr-x. 2 root root 8192 Apr 20 09:27 i386-pc
+
+[root@lvm grub2]# grub2-mkconfig -o grub.cfg
+Generating grub configuration file ...
+#несмотря на данную ошибку генерирование grub.cfg происходит, см. п. 8.
+device-mapper: reload ioctl on osprober-linux-vg_root-lv_root (253:2) failed: Device or resource busy
+Command failed.
+done
+
+[root@lvm grub2]# grub2-install.el8 /dev/sda
+Installing for i386-pc platform.
+Installation finished. No error reported.
+```
+17. Выход из конфигурируемой системы и перезагрузка:<br/>
+```shell
+[root@lvm grub2]# exit
+exit
+
+[root@lvm ~]# reboot
+```
+18. Загрузка системы с /dev/vgr/lvr:
+```shell
+```
